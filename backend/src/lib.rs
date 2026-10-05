@@ -40,6 +40,13 @@ pub fn app(db_path: &str, engine: EngineConfig) -> Router {
              PRIMARY KEY (game_id, ply));",
     )
     .expect("create tables");
+    // Databases made before analysis existed lack this column (CREATE TABLE IF NOT EXISTS does not add it).
+    let has_column: i64 = conn
+        .query_row("SELECT COUNT(*) FROM pragma_table_info('games') WHERE name = 'analysis_error'", [], |r| r.get(0))
+        .expect("inspect games table");
+    if has_column == 0 {
+        conn.execute("ALTER TABLE games ADD COLUMN analysis_error TEXT", []).expect("add analysis_error");
+    }
     Router::new()
         .route("/api/games", post(create_game))
         .route("/api/games/{id}", get(read_game))
@@ -65,7 +72,10 @@ async fn read_game(State(st): State<AppState>, Path(id): Path<i64>) -> Result<Js
     let conn = st.db.lock().unwrap();
     let (pgn, analysis_error): (String, Option<String>) = conn
         .query_row("SELECT pgn, analysis_error FROM games WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?)))
-        .map_err(|_| err(StatusCode::NOT_FOUND, "Game not found"))?;
+        .map_err(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => err(StatusCode::NOT_FOUND, "Game not found"),
+            e => err(StatusCode::INTERNAL_SERVER_ERROR, e),
+        })?;
     let game = pgn::parse(&pgn).map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
     let mut analysis = vec![Value::Null; game.fens.len()];

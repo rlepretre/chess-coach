@@ -184,3 +184,20 @@ async fn real_stockfish_finds_a_sane_evaluation() {
     assert!((-100..=100).contains(&cp), "start position should be roughly equal, got {cp}");
     assert!(!start[0]["pv"].as_array().unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn database_from_before_analysis_existed_still_opens() {
+    let path = std::env::temp_dir().join(format!("chess-coach-old-{}.db", std::process::id()));
+    let _ = std::fs::remove_file(&path);
+    let path = path.to_str().unwrap();
+    // Schema as created by the first version (no analysis columns/tables).
+    let old = rusqlite::Connection::open(path).unwrap();
+    old.execute_batch("CREATE TABLE games (id INTEGER PRIMARY KEY, pgn TEXT NOT NULL);").unwrap();
+    old.execute("INSERT INTO games (pgn) VALUES (?1)", [PGN]).unwrap();
+    drop(old);
+
+    let (status, game) = call(&backend::app(path, no_engine()), get(1)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(game["moves"].as_array().unwrap().len(), 5);
+    let _ = std::fs::remove_file(path);
+}
