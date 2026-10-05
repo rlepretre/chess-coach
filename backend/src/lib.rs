@@ -19,6 +19,8 @@ type ApiError = (StatusCode, Json<Value>);
 pub struct EngineConfig {
     pub command: String,
     pub depth: u32,
+    pub threads: u32,
+    pub hash_mb: u32,
 }
 
 #[derive(Clone)]
@@ -103,7 +105,7 @@ fn analyse_game(st: AppState, id: i64, fens: Vec<String>) {
     let fail = |msg: String| {
         let _ = st.db.lock().unwrap().execute("UPDATE games SET analysis_error = ?1 WHERE id = ?2", (msg, id));
     };
-    let mut uci = match engine::Uci::start(&st.engine.command) {
+    let mut uci = match engine::Uci::start(&st.engine) {
         Ok(u) => u,
         Err(e) => return fail(format!("Cannot start engine '{}': {e}", st.engine.command)),
     };

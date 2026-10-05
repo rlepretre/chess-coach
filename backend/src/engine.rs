@@ -20,8 +20,8 @@ pub struct Uci {
 }
 
 impl Uci {
-    pub fn start(command: &str) -> std::io::Result<Uci> {
-        let mut child = Command::new(command)
+    pub fn start(config: &crate::EngineConfig) -> std::io::Result<Uci> {
+        let mut child = Command::new(&config.command)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -32,6 +32,8 @@ impl Uci {
         uci.send("uci")?;
         uci.wait_for("uciok")?;
         uci.send(&format!("setoption name MultiPV value {LINES}"))?;
+        uci.send(&format!("setoption name Threads value {}", config.threads))?;
+        uci.send(&format!("setoption name Hash value {}", config.hash_mb))?;
         uci.send("isready")?;
         uci.wait_for("readyok")?;
         Ok(uci)

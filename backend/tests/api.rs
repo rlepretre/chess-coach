@@ -5,7 +5,7 @@ use tower::ServiceExt;
 use backend::EngineConfig;
 
 fn no_engine() -> EngineConfig {
-    EngineConfig { command: "/nonexistent/engine".into(), depth: 1 }
+    EngineConfig { command: "/nonexistent/engine".into(), depth: 1, threads: 1, hash_mb: 1 }
 }
 
 
@@ -77,6 +77,7 @@ const FAKE_ENGINE: &str = r#"#!/bin/bash
 while read -r line; do
   case "$line" in
     uci) echo "uciok" ;;
+    setoption*) echo "$line" >> "$0.options" ;;
     isready) echo "readyok" ;;
     position*) fen="$line" ;;
     go*)
@@ -96,7 +97,7 @@ fn fake_engine() -> EngineConfig {
     let path = std::env::temp_dir().join(format!("fake-uci-{}-{:?}.sh", std::process::id(), std::thread::current().id()));
     std::fs::write(&path, FAKE_ENGINE).unwrap();
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
-    EngineConfig { command: path.to_str().unwrap().into(), depth: 5 }
+    EngineConfig { command: path.to_str().unwrap().into(), depth: 5, threads: 3, hash_mb: 64 }
 }
 
 async fn wait_for_analysis(app: &Router, id: i64) -> Value {
@@ -175,7 +176,7 @@ async fn real_stockfish_finds_a_sane_evaluation() {
         eprintln!("stockfish not installed, skipping");
         return;
     }
-    let app = backend::app(":memory:", EngineConfig { command: "stockfish".into(), depth: 8 });
+    let app = backend::app(":memory:", EngineConfig { command: "stockfish".into(), depth: 8, threads: 2, hash_mb: 64 });
     let (_, created) = call(&app, post("1. e4")).await;
     let game = wait_for_analysis(&app, created["id"].as_i64().unwrap()).await;
     let start = &game["analysis"][0]["lines"];
@@ -200,4 +201,18 @@ async fn database_from_before_analysis_existed_still_opens() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(game["moves"].as_array().unwrap().len(), 5);
     let _ = std::fs::remove_file(path);
+}
+
+#[tokio::test]
+async fn engine_is_told_how_many_threads_and_how_much_memory_to_use() {
+    let engine = fake_engine();
+    let options_file = format!("{}.options", engine.command);
+    let _ = std::fs::remove_file(&options_file);
+    let app = backend::app(":memory:", engine);
+    let (_, created) = call(&app, post(PGN)).await;
+    wait_for_analysis(&app, created["id"].as_i64().unwrap()).await;
+
+    let options = std::fs::read_to_string(&options_file).unwrap();
+    assert!(options.contains("name Threads value 3"), "{options}");
+    assert!(options.contains("name Hash value 64"), "{options}");
 }
