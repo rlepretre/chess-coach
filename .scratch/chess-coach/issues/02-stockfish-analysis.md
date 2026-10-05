@@ -4,9 +4,9 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Evaluations and top lines are stored per position
-- [ ] Evaluation bar and per-move evaluation shown in the UI
-- [ ] Reopening a game needs no re-analysis
-- [ ] Tests with a fake Stockfish, plus a few against the real engine
+- [x] Evaluations and top lines are stored per position
+- [x] Evaluation bar and per-move evaluation shown in the UI
+- [x] Reopening a game needs no re-analysis
+- [x] Tests with a fake Stockfish, plus a few against the real engine
